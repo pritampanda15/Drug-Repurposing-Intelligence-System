@@ -79,6 +79,7 @@ outputs/
 .cache/
 *.cache
 __pycache__/
+.claude/
 
 # Testing
 .pytest_cache/
