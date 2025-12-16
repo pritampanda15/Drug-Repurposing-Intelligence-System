@@ -1,0 +1,68 @@
+# R-GCN Model Configuration
+
+model:
+  name: "R-GCN Drug Repurposing"
+  type: "relational_gcn"
+
+  # Architecture
+  encoder:
+    num_layers: 3
+    hidden_dim: 128
+    num_bases: 30  # For basis decomposition in R-GCN
+    dropout: 0.3
+
+  decoder:
+    type: "DistMult"  # Options: DistMult, MLP, TransE
+    hidden_dim: 64
+
+  # Node Features
+  node_features:
+    embedding_dim: 128
+    use_pretrained: false
+    pretrained_path: null
+
+# Training Configuration
+training:
+  batch_size: 512
+  num_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  optimizer: "Adam"
+
+  # Early Stopping
+  early_stopping:
+    enabled: true
+    patience: 10
+    metric: "val_mrr"
+    mode: "max"
+
+  # Learning Rate Scheduler
+  scheduler:
+    enabled: true
+    type: "ReduceLROnPlateau"
+    factor: 0.5
+    patience: 5
+
+# Data Split
+data:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  negative_sampling_ratio: 5  # Number of negative samples per positive
+  seed: 42
+
+# Evaluation
+evaluation:
+  metrics:
+    - "hits@1"
+    - "hits@5"
+    - "hits@10"
+    - "mrr"  # Mean Reciprocal Rank
+    - "auc"
+  threshold: 0.5  # For binary classification
+
+# MLflow
+mlflow:
+  enabled: true
+  experiment_name: "drug_repurposing_rgcn"
+  tracking_uri: "mlruns"

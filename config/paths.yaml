@@ -1,0 +1,64 @@
+# Project Paths Configuration
+
+# Root Directory (relative paths from project root)
+project_root: "."
+
+# Data Directories
+data:
+  root: "data"
+
+  # Raw Data
+  raw:
+    root: "data/raw"
+    hetionet: "data/raw/hetionet"
+    drugbank: "data/raw/drugbank"
+    pubmed: "data/raw/pubmed_abstracts"
+
+  # Processed Data
+  processed:
+    root: "data/processed"
+    graph: "data/processed/graph"
+    embeddings: "data/processed/embeddings"
+    splits: "data/processed/splits"
+
+  # Knowledge Base
+  knowledge_base:
+    root: "data/knowledge_base"
+    chunks: "data/knowledge_base/chunks"
+    chroma: "data/knowledge_base/chroma"
+    cache: "data/knowledge_base/cache"
+
+# Model Directories
+models:
+  root: "models"
+  checkpoints: "models/checkpoints"
+  pretrained: "models/pretrained"
+  exports: "models/exports"
+
+# MLflow
+mlflow:
+  tracking_uri: "mlruns"
+  artifacts: "mlruns/artifacts"
+
+# Logs
+logs:
+  root: "logs"
+  training: "logs/training"
+  inference: "logs/inference"
+  rag: "logs/rag"
+
+# Outputs
+outputs:
+  root: "outputs"
+  predictions: "outputs/predictions"
+  evaluations: "outputs/evaluations"
+  explanations: "outputs/explanations"
+  visualizations: "outputs/visualizations"
+
+# External URLs
+urls:
+  hetionet_json: "https://github.com/hetio/hetionet/raw/main/hetnet/json/hetionet-v1.0.json.bz2"
+  drugbank_downloads: "https://go.drugbank.com/releases/latest"
+  kegg_api: "https://rest.kegg.jp"
+  reactome_api: "https://reactome.org/ContentService"
+  ncbi_eutils: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"

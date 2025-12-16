@@ -1,0 +1,103 @@
+# RAG System Configuration
+
+# Embedding Model
+embedding:
+  model_name: "michiyasunaga/BioLinkBERT-base"  # Or: microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract
+  dimension: 768
+  device: "cuda"  # Options: cuda, cpu, mps
+  batch_size: 32
+
+# Vector Database
+vector_store:
+  provider: "chromadb"
+  persist_directory: "data/knowledge_base/chroma"
+
+  collections:
+    mechanisms: "drug_mechanisms"
+    clinical_evidence: "clinical_trials"
+    pathways: "biological_pathways"
+    literature: "pubmed_abstracts"
+
+# Document Processing
+documents:
+  chunk_size: 512
+  chunk_overlap: 50
+  separators:
+    - "\n\n"
+    - "\n"
+    - ". "
+
+  # Source Weights for Retrieval
+  source_weights:
+    drugbank: 1.0
+    pubmed: 0.8
+    pathways: 0.6
+    clinical_trials: 1.2
+
+# Retrieval Configuration
+retrieval:
+  top_k: 5  # Number of chunks to retrieve
+  similarity_threshold: 0.7
+
+  # Metadata Filters
+  enable_filtering: true
+  filter_by:
+    - "drug_id"
+    - "disease_id"
+    - "source_type"
+
+  # Re-ranking
+  rerank:
+    enabled: true
+    model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+# LLM Configuration
+llm:
+  provider: "openai"  # Options: openai, anthropic, local
+  model: "gpt-4"
+  temperature: 0.2
+  max_tokens: 1500
+
+  # System Prompt
+  system_prompt: |
+    You are a biomedical AI assistant specialized in drug repurposing.
+    Your task is to analyze drug-disease predictions from a graph neural network
+    and explain the biological plausibility using retrieved scientific evidence.
+
+    Always cite your sources and distinguish between:
+    - Established knowledge (DrugBank, pathways)
+    - Experimental evidence (PubMed literature)
+    - Novel predictions (model output)
+
+    Provide confidence assessments and suggest validation experiments.
+
+# Data Sources
+data_sources:
+  drugbank:
+    xml_path: "data/raw/drugbank/full_database.xml"
+    extract_fields:
+      - "mechanism_of_action"
+      - "pharmacodynamics"
+      - "indications"
+      - "off_label_uses"
+
+  pubmed:
+    api_key_env: "NCBI_API_KEY"
+    email_env: "NCBI_EMAIL"
+    max_results_per_query: 20
+    query_template: "(drug repurposing OR drug repositioning) AND {disease_name}"
+
+  pathways:
+    sources:
+      - "KEGG"
+      - "Reactome"
+    api_endpoints:
+      kegg: "https://rest.kegg.jp"
+      reactome: "https://reactome.org/ContentService"
+
+# Caching
+cache:
+  enabled: true
+  ttl_seconds: 86400  # 24 hours
+  backend: "disk"
+  cache_dir: "data/knowledge_base/cache"
