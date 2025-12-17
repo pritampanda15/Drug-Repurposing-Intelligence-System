@@ -1,277 +1,147 @@
 # Drug Repurposing Intelligence System
 
-An AI-powered system for discovering novel drug-disease relationships using graph neural networks and retrieval-augmented generation (RAG).
+An AI-powered system for discovering novel drug-disease relationships using **Relational Graph Convolutional Networks (R-GCN)** and **Retrieval-Augmented Generation (RAG)**. This project integrates heterogeneous biomedical knowledge graphs with natural language processing to predict and explain potential drug repurposing candidates.
 
-## Overview
+![alt image]()
+---
 
-This project combines:
-- **Relational Graph Convolutional Networks (R-GCN)** for predicting drug-disease relationships from biomedical knowledge graphs
-- **RAG with LLM** for generating human-interpretable explanations of predictions
-- **Hetionet** as the primary knowledge graph (47,031 nodes, 2.25M edges)
+## 🌟 Overview
 
-## Key Features
+The system addresses the high cost and time of traditional drug discovery by leveraging existing biomedical data to find "new tricks for old drugs." It predicts which drugs may treat specific diseases and provides human-interpretable explanations by citing mechanisms of action and literature.
 
-- **Graph Neural Network Link Prediction**: Predicts which drugs may treat which diseases using R-GCN on heterogeneous biomedical graphs
-- **Explainable AI**: Generates natural language explanations citing mechanisms of action, biological pathways, and literature evidence
-- **Multi-Source Knowledge Integration**: Combines DrugBank, PubMed, KEGG, and Reactome data
-- **Interactive Web Interface**: Streamlit-based UI for exploring predictions and explanations
+### Core Technologies
 
-## Architecture
+* **Graph Machine Learning**: 3-layer R-GCN encoder and DistMult decoder on **Hetionet** (47,031 nodes, 2,250,197 edges).
+* **Explainable AI (XAI)**: RAG with LLMs to generate natural language explanations citing mechanisms of action and literature.
+* **Multi-Source Integration**: Data from Hetionet, DrugBank, PubMed, KEGG, and Reactome.
+* **Scientific Paper Analysis**: Specialized module for extracting chemical entities and summarizing PDF publications.
 
-```
+---
+
+## 🏗️ System Architecture & Workflow
+
+The system operates as a modular pipeline that connects deep learning on graphs with semantic search and large language models.
+
+### The Two-Stage Discovery Pipeline
+
+1. **Link Prediction (Deep Learning)**:
+* The **R-GCN model** acts as the discovery engine. It analyzes the topology of the Hetionet graph (including gene associations and molecular functions).
+* It calculates the probability of a "treats" relationship between a **Compound** and a **Disease** node.
+
+
+2. **RAG Pipeline (Explanability)**:
+* Once a high-probability prediction is made, the system queries a **ChromaDB** vector database containing DrugBank pharmacology and PubMed abstracts.
+* An LLM synthesizes this evidence to provide a biological rationale.
+
+
+
+### Workflow Diagram
+
+```text
 Input: Drug + Disease Query
          │
          ▼
-┌─────────────────────┐
-│   R-GCN Model       │  → Prediction Score (0-1)
-│  (Link Prediction)  │
-└─────────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│   RAG Pipeline      │  → Biological Context
-│  (ChromaDB + LLM)   │    - Mechanisms
-└─────────────────────┘    - Pathways
-         │                 - Literature Evidence
-         ▼
-    Explanation + Confidence Assessment
+┌──────────────────────────────┐
+│       R-GCN Model            │
+│ (Heterogeneous Link Prediction) ──▶  Prediction Score (0.0 - 1.0)
+│    - 3-Layer R-GCN Encoder   │       Confidence Assessment
+│    - DistMult Scoring Decoder│
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│        RAG Pipeline          │
+│  (ChromaDB + OpenAI/LLM)     │
+├──────────────────────────────┤
+│ 1. Vector Search (DrugBank)  │──▶  Biological Context:
+│ 2. Lit. Search (PubMed)      │     - Mechanisms of Action
+│ 3. Pathway Mapping (KEGG)    │     - Pathway Intersections
+└──────────────┬───────────────┘     - Literature Citations
+               │
+               ▼
+      Human-Interpretable 
+     Discovery Explanation
+
 ```
 
-## Project Structure
+---
 
-```
-drug_repurposing_system/
-├── config/                  # Configuration files
-│   ├── model_config.yaml   # R-GCN model parameters
-│   ├── rag_config.yaml     # RAG pipeline configuration
-│   └── paths.yaml          # Data and model paths
-│
-├── data/                   # Data storage
-│   ├── raw/                # Original datasets
-│   ├── processed/          # Processed graphs and features
-│   └── knowledge_base/     # RAG document store
-│
-├── src/                    # Source code
-│   ├── data/               # Data loading and processing
-│   ├── models/             # R-GCN implementation
-│   ├── rag/                # RAG pipeline
-│   ├── inference/          # Prediction and tools
-│   └── utils/              # Utilities
-│
-├── notebooks/              # Jupyter notebooks for analysis
-├── app/                    # Streamlit web interface
-└── scripts/                # Executable scripts
-```
+## 🔬 Paper Analysis Algorithm
 
-## Installation
+The "Paper Analysis" feature is a specialized sub-system designed to ingest unstructured research papers and output structured chemical intelligence.
 
-### Prerequisites
+### 1. Document Parsing & NLP
 
-- Python 3.8+
-- CUDA-capable GPU (recommended for training)
+* **Extraction**: Uses `pdfplumber` and `PyPDF2` to extract text from multi-column scientific layouts.
+* **Entity Recognition**: Implements a regex-based **Chemical Entity Recognition (CER)** algorithm to find drug names and IUPAC nomenclature (e.g., words ending in `-ine`, `-ide`, `-ate`).
+* **Frequency Mapping**: Scores importance based on mention frequency throughout the document.
+
+### 2. Molecular Informatics Workflow
+
+For every extracted chemical, the system runs the following:
+
+* **Identity Validation**: Queries the **PubChem API** via `pubchempy` to verify the entity and fetch its **SMILES** string.
+* **2D Rendering**: Uses **RDKit** to generate high-resolution molecular structure diagrams.
+* **Descriptor Calculation**: Computes ADME/Tox-relevant properties:
+* **Molecular Weight (MW)**
+* **Lipophilicity (LogP)**
+* **Polar Surface Area (TPSA)**
+* **H-Bond Donors/Acceptors**
+
+
+
+### 3. AI Summarization Logic
+
+* **Contextual Slicing**: The system extracts the first and last 4,000 characters (Abstract/Introduction and Conclusion/Results) to avoid token limit issues while maintaining context.
+* **Structured Prompting**: The LLM is instructed to return a JSON-structured summary covering:
+* **Objective**: The core research question.
+* **Methods**: Experimental or computational approaches used.
+* **Key Findings**: Major results and statistical significance.
+* **Clinical Relevance**: Potential for drug repurposing or therapeutic use.
+
+
+
+---
+
+## 🛠️ Installation & Execution
 
 ### Setup
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd Drug_Repurposing_Intelligence_System
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+# Environment Setup
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-
-# Install project in editable mode
 pip install -e .
+
+# Configure API Keys in .env
+echo "OPENAI_API_KEY=your_key" > .env
+echo "NCBI_EMAIL=your_email@example.com" >> .env
+
 ```
 
-### Environment Configuration
+### Full Workflow Execution
 
-Copy `.env.example` to `.env` and configure:
+1. **Prepare Data**: `python3 scripts/download_data.py && python3 scripts/build_knowledge_graph.py`
+2. **Train Discovery Model**: `python3 scripts/train_model.py --epochs 50 --device cuda`
+3. **Index Knowledge Base**: `python3 scripts/index_documents.py --drugbank path/to/db.xml --pubmed`
+4. **Run Dashboard**: `streamlit run app/streamlit_app.py`
 
-```bash
-cp .env.example .env
-```
+---
 
-Required environment variables:
-- `OPENAI_API_KEY`: For LLM-based explanations
-- `NCBI_API_KEY`: For PubMed literature retrieval
-- `NCBI_EMAIL`: Your email for NCBI API access
+## 📂 Project Structure
 
-## Quick Start
+* `app/`: Streamlit UI and "Paper Analysis" dashboard.
+* `src/models/`: R-GCN architecture and DistMult scoring implementation.
+* `src/paper_analysis/`: Modules for PDF parsing, CER, and RDKit visualization.
+* `src/rag/`: Vector database management and LLM prompt engineering.
+* `data/`: Stores Hetionet JSON, processed `.pt` graph files, and ChromaDB indices.
 
-### 1. Download Data
+---
 
-```bash
-python scripts/download_data.py
-```
+## 📚 References & Data Sources
 
-This downloads:
-- Hetionet knowledge graph
-- DrugBank data (requires academic license)
-
-### 2. Build Knowledge Graph
-
-```bash
-python scripts/build_knowledge_graph.py
-```
-
-Converts Hetionet to PyTorch Geometric format.
-
-### 3. Train Model
-
-```bash
-python scripts/train_model.py
-```
-
-Trains R-GCN model for link prediction. Monitor with MLflow:
-
-```bash
-mlflow ui
-```
-
-### 4. Index Documents for RAG
-
-```bash
-python scripts/index_documents.py
-```
-
-Processes and indexes documents in ChromaDB.
-
-### 5. Launch Web Interface
-
-```bash
-streamlit run app/streamlit_app.py
-```
-
-## Usage
-
-### Programmatic Access
-
-```python
-from src.inference.predictor import DrugRepurposingPredictor
-
-# Initialize predictor
-predictor = DrugRepurposingPredictor(
-    model_path="models/checkpoints/best_model.pt",
-    config_path="config/model_config.yaml"
-)
-
-# Get prediction
-result = predictor.predict(
-    drug_id="DB00945",      # Aspirin
-    disease_id="DOID:1612"  # Breast cancer
-)
-
-print(f"Prediction Score: {result.prediction_score:.3f}")
-print(f"Confidence: {result.confidence}")
-print(f"\nExplanation:\n{result.explanation}")
-```
-
-### LLM Tool Calling
-
-The system provides a tool for LLM agents:
-
-```python
-from src.inference.tools import get_repurposing_prediction
-
-prediction = get_repurposing_prediction(
-    drug_id="DB00945",
-    disease_id="DOID:1612",
-    include_pathway_analysis=True,
-    top_k_genes=10
-)
-```
-
-## Data Sources
-
-| Source | Purpose | License |
-|--------|---------|---------|
-| [Hetionet](https://het.io) | Primary knowledge graph | CC0 1.0 |
-| [DrugBank](https://go.drugbank.com) | Drug mechanisms | Academic license required |
-| [PubMed](https://pubmed.ncbi.nlm.nih.gov) | Literature evidence | Public domain |
-| [KEGG](https://www.kegg.jp) | Pathway information | Academic use |
-| [Reactome](https://reactome.org) | Pathway information | CC BY 4.0 |
-
-## Model Details
-
-### R-GCN Architecture
-
-- **Input**: Hetionet heterogeneous graph
-- **Encoder**: 3-layer R-GCN with basis decomposition
-- **Decoder**: DistMult scoring function
-- **Output**: Drug-disease relationship probability
-
-### Training
-
-- **Task**: Link prediction (binary classification)
-- **Positive samples**: Known Compound-treats-Disease edges
-- **Negative sampling**: 5:1 ratio
-- **Evaluation**: Hits@K, MRR, AUC-ROC
-
-## Development
-
-### Running Tests
-
-```bash
-pytest tests/
-```
-
-### Code Style
-
-```bash
-# Format code
-black src/
-
-# Lint
-flake8 src/
-```
-
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
-
-## Citation
-
-If you use this system in your research, please cite:
-
-```bibtex
-@software{drug_repurposing_system,
-  title={Drug Repurposing Intelligence System},
-  author={},
-  year={2025},
-  url={https://github.com/...}
-}
-```
-
-### Key References
-
-- Himmelstein et al. (2017). "Systematic integration of biomedical knowledge prioritizes drugs for repurposing." *eLife*.
-- Schlichtkrull et al. (2018). "Modeling Relational Data with Graph Convolutional Networks." *ESWC*.
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Support
-
-For questions or issues:
-- Open a GitHub issue
-- Contact: [your-email]
-
-## Roadmap
-
-- [ ] Implement full Hetionet loader
-- [ ] Train baseline R-GCN model
-- [ ] Build RAG pipeline
-- [ ] Add molecular fingerprint features
-- [ ] Integrate clinical trial data
-- [ ] Deploy as web service
-- [ ] Add batch prediction API
-- [ ] Publish validation study
+* **Hetionet**: Himmelstein, et al. (2017) *eLife*.
+* **R-GCN**: Schlichtkrull, et al. (2018) *ESWC*.
+* **DrugBank**: Wishart DS, et al. *Nucleic Acids Res*.
+* **PubMed**: National Center for Biotechnology Information (NCBI).

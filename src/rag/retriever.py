@@ -7,7 +7,7 @@ import logging
 
 from sentence_transformers import SentenceTransformer
 import chromadb
-
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +30,21 @@ class RAGRetriever:
         embedding_model : str
             Name of sentence transformer model
         persist_directory : str
-            Directory for ChromaDB
+            Directory for ChromaDB (relative to project root or absolute path)
         """
         logger.info(f"Loading embedding model: {embedding_model}")
         self.embedding_model = SentenceTransformer(embedding_model)
 
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        # Handle both relative and absolute paths
+        persist_path = Path(persist_directory)
+        if not persist_path.is_absolute():
+            # Relative path - resolve from project root
+            base_dir = Path(__file__).resolve().parents[2]  # src/rag/ -> project root
+            persist_path = (base_dir / persist_directory).resolve()
+
+        logger.info(f"Using ChromaDB directory: {persist_path}")
+
+        self.client = chromadb.PersistentClient(path=str(persist_path))
 
     def retrieve(
         self,

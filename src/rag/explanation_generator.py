@@ -21,7 +21,7 @@ class ExplanationGenerator:
         self,
         retriever: RAGRetriever,
         llm_provider: str = "openai",
-        model: str = "gpt-4"
+        model: str = None
     ):
         """
         Initialize explanation generator.
@@ -33,18 +33,39 @@ class ExplanationGenerator:
         llm_provider : str
             LLM provider (openai, anthropic)
         model : str
-            Model name
+            Model name (defaults to OPENAI_MODEL env var or gpt-3.5-turbo)
         """
         self.retriever = retriever
         self.llm_provider = llm_provider
-        self.model = model
+        # Use model from parameter, env var, or default
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
         if llm_provider == "openai":
             try:
                 import openai
-                self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            except ImportError:
-                logger.warning("OpenAI not installed. Install with: pip install openai")
+                import httpx
+                import certifi
+
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    logger.warning("OPENAI_API_KEY not set in environment. Explanations will use fallback mode.")
+                    self.client = None
+                else:
+                    # Create httpx client with proper SSL configuration
+                    http_client = httpx.Client(
+                        verify=certifi.where(),
+                        timeout=30.0
+                    )
+                    self.client = openai.OpenAI(
+                        api_key=api_key,
+                        http_client=http_client
+                    )
+                    logger.info(f"OpenAI client initialized with model: {self.model}")
+            except ImportError as e:
+                logger.warning(f"Required library not installed: {e}. Install with: pip install openai certifi")
+                self.client = None
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenAI client: {e}")
                 self.client = None
 
     def generate_explanation(

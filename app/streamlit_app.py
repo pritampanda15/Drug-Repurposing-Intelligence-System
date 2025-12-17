@@ -13,10 +13,15 @@ import torch
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv(project_root / ".env")
 
 from src.data.hetionet_loader import HetionetLoader
 from src.models.link_predictor import DrugRepurposingModel
@@ -86,9 +91,10 @@ def load_model(model_path, _loader):
 
 @st.cache_resource
 def load_rag_system():
-    """Load RAG retriever and generator."""
     try:
-        retriever = RAGRetriever()
+        retriever = RAGRetriever(
+            persist_directory="data/knowledge_base/chroma"
+        )
         generator = ExplanationGenerator(retriever)
         return retriever, generator
     except Exception as e:
@@ -96,9 +102,13 @@ def load_rag_system():
         return None, None
 
 
+
+
 # Main content
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Drug-Disease Prediction",
+    "💬 Drug Q&A",
+    "📄 Paper Analysis",
     "📊 Knowledge Graph Explorer",
     "📈 Statistics",
     "ℹ️ About"
@@ -239,8 +249,322 @@ with tab1:
         st.error(f"Error loading data: {e}")
         st.info("Make sure you've run `python scripts/download_data.py` first.")
 
-# Tab 2: Knowledge Graph Explorer
+# Tab 2: Drug Q&A
 with tab2:
+    st.header("💬 Ask Questions About Drugs")
+    st.markdown("""
+    Ask any question about a specific drug's mechanism, indications, or pharmacology.
+    The system will search the knowledge base and provide AI-powered answers.
+    """)
+
+    try:
+        loader = load_hetionet(data_dir)
+        compounds = loader.nodes_by_type.get('Compound', [])
+        compounds_sorted = sorted(compounds, key=lambda x: x['name'])
+
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            st.subheader("Select Drug")
+            drug_names = [c['name'] for c in compounds_sorted]
+            qa_drug = st.selectbox(
+                "Drug",
+                options=drug_names,
+                help="Select a drug to ask questions about",
+                key="qa_drug_select"
+            )
+
+            if qa_drug:
+                drug_idx = next(i for i, c in enumerate(compounds) if c['name'] == qa_drug)
+                drug_info = compounds[drug_idx]
+                st.info(f"**ID:** {drug_info['id']}")
+
+                st.markdown("**Example Questions:**")
+                st.markdown("- What is the mechanism of action?")
+                st.markdown("- What diseases does it treat?")
+                st.markdown("- What are the side effects?")
+                st.markdown("- How does it work?")
+
+        with col2:
+            st.subheader("Your Question")
+
+            # Question input
+            user_question = st.text_input(
+                "Ask a question about this drug:",
+                placeholder=f"e.g., How does {qa_drug if qa_drug else 'this drug'} work?",
+                key="qa_question"
+            )
+
+            if st.button("🔍 Get Answer", key="qa_button"):
+                if not user_question:
+                    st.warning("Please enter a question first.")
+                else:
+                    with st.spinner("Searching knowledge base and generating answer..."):
+                        retriever, generator = load_rag_system()
+
+                        if retriever and generator:
+                            try:
+                                # Search for drug-specific information
+                                search_query = f"{qa_drug} {user_question}"
+                                docs = retriever.retrieve(
+                                    query=search_query,
+                                    collection_name="drug_mechanisms",
+                                    top_k=3
+                                )
+
+                                # Build context from retrieved docs
+                                context = "\n\n".join([
+                                    f"Source {i+1}:\n{doc['text'][:500]}"
+                                    for i, doc in enumerate(docs)
+                                ])
+
+                                # Generate answer
+                                if not generator.client:
+                                    st.error("OpenAI API key not configured. Cannot generate answer.")
+                                    st.info("Retrieved information:")
+                                    for i, doc in enumerate(docs):
+                                        with st.expander(f"Source {i+1}"):
+                                            st.write(doc['text'][:500])
+                                else:
+                                    prompt = f"""Answer this question about {qa_drug}:
+
+Question: {user_question}
+
+Relevant Information:
+{context}
+
+Provide a clear, concise answer based on the information above. If the information doesn't fully answer the question, say so."""
+
+                                    response = generator.client.chat.completions.create(
+                                        model=generator.model,
+                                        messages=[
+                                            {"role": "system", "content": "You are a knowledgeable pharmacology assistant. Provide accurate, evidence-based answers about drugs."},
+                                            {"role": "user", "content": prompt}
+                                        ],
+                                        temperature=0.3,
+                                        max_tokens=500
+                                    )
+
+                                    answer = response.choices[0].message.content
+
+                                    # Display answer
+                                    st.success("**Answer:**")
+                                    st.markdown(answer)
+
+                                    # Show sources
+                                    with st.expander("📚 View Sources"):
+                                        for i, doc in enumerate(docs):
+                                            st.markdown(f"**Source {i+1}:**")
+                                            st.text(doc['text'][:300] + "...")
+                                            st.markdown("---")
+
+                            except Exception as e:
+                                st.error(f"Error generating answer: {e}")
+                                st.info("""
+                                **Possible issues:**
+                                - OpenAI API key not set or invalid
+                                - No documents indexed
+                                - Rate limit exceeded
+
+                                **To fix:**
+                                - Set `OPENAI_API_KEY` in `.env` file
+                                - Run `python3 scripts/index_documents.py`
+                                - Restart Streamlit
+                                """)
+                        else:
+                            st.warning("""
+                            **Q&A system not available.**
+
+                            To enable Q&A:
+                            1. Index documents: `python3 scripts/index_documents.py`
+                            2. Set `OPENAI_API_KEY` in `.env` file
+                            3. Restart Streamlit app
+                            """)
+
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+# Tab 3: Paper Analysis
+with tab3:
+    st.header("📄 Scientific Paper Analysis")
+    st.markdown("""
+    Upload a scientific paper (PDF) to extract chemical compounds and generate an AI-powered summary.
+    """)
+
+    uploaded_file = st.file_uploader("Upload PDF Paper", type=['pdf'])
+
+    if uploaded_file is not None:
+        # Save uploaded file temporarily
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            tmp_path = tmp_file.name
+
+        st.success(f"✓ Uploaded: {uploaded_file.name}")
+
+        # Extract text
+        with st.spinner("Extracting text from PDF..."):
+            try:
+                from src.paper_analysis.pdf_extractor import PDFExtractor
+
+                extractor = PDFExtractor()
+                text = extractor.extract_text(tmp_path)
+                metadata = extractor.extract_metadata(tmp_path)
+
+                st.info(f"📄 Pages: {metadata.get('num_pages', 'Unknown')}")
+
+                # Show text preview
+                with st.expander("📝 View Extracted Text (preview)"):
+                    st.text(text[:2000] + "..." if len(text) > 2000 else text)
+
+            except Exception as e:
+                st.error(f"Failed to extract text: {e}")
+                text = None
+
+        if text:
+            col1, col2 = st.columns(2)
+
+            # Extract chemicals
+            with col1:
+                st.subheader("🧪 Extracted Chemicals")
+
+                with st.spinner("Identifying chemicals..."):
+                    try:
+                        from src.paper_analysis.chemical_extractor import ChemicalExtractor
+
+                        chem_extractor = ChemicalExtractor()
+                        chemicals = chem_extractor.extract_chemicals(
+                            text,
+                            min_length=4,
+                            max_results=20,
+                            validate=False  # Set to True for PubChem validation (slower)
+                        )
+
+                        if chemicals:
+                            st.success(f"Found {len(chemicals)} potential chemicals")
+
+                            # Display as table
+                            import pandas as pd
+                            chem_df = pd.DataFrame(chemicals)
+                            st.dataframe(
+                                chem_df[['name', 'count']].head(15),
+                                width='stretch'
+                            )
+
+                            # Select chemical for visualization
+                            selected_chem = st.selectbox(
+                                "Select chemical to visualize:",
+                                options=[c['name'] for c in chemicals[:10]]
+                            )
+
+                            if st.button("🎨 Show 2D Structure"):
+                                with st.spinner(f"Generating structure for {selected_chem}..."):
+                                    try:
+                                        from src.paper_analysis.structure_visualizer import StructureVisualizer
+                                        from io import BytesIO
+                                        from PIL import Image
+
+                                        visualizer = StructureVisualizer()
+
+                                        # Get SMILES first
+                                        smiles = visualizer.name_to_smiles(selected_chem)
+
+                                        if not smiles:
+                                            st.error(f"❌ Could not find '{selected_chem}' in PubChem database.")
+                                            st.info("Try using the exact chemical name or select another compound.")
+                                        else:
+                                            st.success(f"✓ Found: **{selected_chem}**")
+                                            st.code(f"SMILES: {smiles}", language=None)
+
+                                            # Generate image
+                                            img_bytes = visualizer.draw_from_smiles(smiles)
+
+                                            if img_bytes:
+                                                # Convert bytes to PIL Image for Streamlit
+                                                img = Image.open(BytesIO(img_bytes))
+                                                st.image(img, caption=f"2D Structure of {selected_chem}", width='stretch')
+
+                                                # Show properties
+                                                props = visualizer.get_molecular_properties(smiles)
+                                                if props:
+                                                    st.markdown("**Molecular Properties:**")
+                                                    prop_col1, prop_col2, prop_col3 = st.columns(3)
+                                                    with prop_col1:
+                                                        st.metric("Molecular Weight", f"{props.get('molecular_weight', 0):.2f}")
+                                                        st.metric("H-Bond Donors", props.get('h_bond_donors', 0))
+                                                    with prop_col2:
+                                                        st.metric("LogP", f"{props.get('logp', 0):.2f}")
+                                                        st.metric("H-Bond Acceptors", props.get('h_bond_acceptors', 0))
+                                                    with prop_col3:
+                                                        st.metric("Rotatable Bonds", props.get('rotatable_bonds', 0))
+                                                        st.metric("TPSA", f"{props.get('tpsa', 0):.2f} Ų")
+                                            else:
+                                                st.error("Failed to generate molecular structure image.")
+
+                                    except Exception as e:
+                                        st.error(f"Structure visualization failed: {e}")
+                                        import traceback
+                                        with st.expander("Show error details"):
+                                            st.code(traceback.format_exc())
+                        else:
+                            st.warning("No chemicals found in the paper.")
+
+                    except Exception as e:
+                        st.error(f"Chemical extraction failed: {e}")
+
+            # Generate summary
+            with col2:
+                st.subheader("📋 AI-Generated Summary")
+
+                if st.button("✨ Generate Summary", type="primary"):
+                    with st.spinner("Analyzing paper and generating summary..."):
+                        try:
+                            from src.paper_analysis.summarizer import PaperSummarizer
+
+                            summarizer = PaperSummarizer()
+                            summary = summarizer.summarize_paper(text, max_length=400)
+
+                            if summary:
+                                # Display structured summary
+                                if summary.get('objective'):
+                                    st.markdown("**🎯 Main Objective:**")
+                                    st.write(summary['objective'])
+
+                                if summary.get('methods'):
+                                    st.markdown("**🔬 Key Methods:**")
+                                    st.write(summary['methods'])
+
+                                if summary.get('findings'):
+                                    st.markdown("**🔍 Major Findings:**")
+                                    st.write(summary['findings'])
+
+                                if summary.get('relevance'):
+                                    st.markdown("**💊 Clinical Relevance:**")
+                                    st.write(summary['relevance'])
+
+                                if summary.get('chemicals'):
+                                    st.markdown("**🧪 Key Chemicals:**")
+                                    st.write(summary['chemicals'])
+
+                                # Full summary in expander
+                                with st.expander("📄 Full Summary"):
+                                    st.write(summary.get('full_summary', ''))
+                            else:
+                                st.error("Failed to generate summary")
+
+                        except Exception as e:
+                            st.error(f"Summarization failed: {e}")
+                            st.info("Make sure OPENAI_API_KEY is set in your .env file")
+
+        # Cleanup temp file
+        import os
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+
+# Tab 4: Knowledge Graph Explorer
+with tab4:
     st.header("Knowledge Graph Explorer")
     
     try:
@@ -262,8 +586,8 @@ with tab2:
             color="Count",
             color_continuous_scale="Blues"
         )
-        st.plotly_chart(fig, use_container_width=True)
-        
+        st.plotly_chart(fig, width='stretch')
+
         st.subheader("Edge Type Distribution")
         
         edge_df = pd.DataFrame([
@@ -285,8 +609,8 @@ with tab2:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# Tab 3: Statistics
-with tab3:
+# Tab 5: Statistics
+with tab5:
     st.header("System Statistics")
     
     try:
@@ -319,8 +643,8 @@ with tab3:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# Tab 4: About
-with tab4:
+# Tab 6: About
+with tab6:
     st.header("About This System")
     
     st.markdown("""
