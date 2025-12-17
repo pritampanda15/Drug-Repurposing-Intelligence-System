@@ -120,7 +120,7 @@ echo "NCBI_EMAIL=your_email@example.com" >> .env
 
 ```
 
-### Full Workflow Execution
+### Full Workflow Execution: Refer [SETUP GUIDE](https://github.com/pritampanda15/Drug-Repurposing-Intelligence-System/blob/main/DOCUMENTATION/SETUP_GUIDE.md)
 
 1. **Prepare Data**: `python3 scripts/download_data.py && python3 scripts/build_knowledge_graph.py`
 2. **Train Discovery Model**: `python3 scripts/train_model.py --epochs 50 --device cuda`
