@@ -2,7 +2,7 @@
 
 An AI-powered system for discovering novel drug-disease relationships using **Relational Graph Convolutional Networks (R-GCN)** and **Retrieval-Augmented Generation (RAG)**. This project integrates heterogeneous biomedical knowledge graphs with natural language processing to predict and explain potential drug repurposing candidates.
 
-![alt image]()
+![alt image](https://github.com/pritampanda15/Drug-Repurposing-Intelligence-System/blob/main/Intelligence.png)
 ---
 
 ## 🌟 Overview
